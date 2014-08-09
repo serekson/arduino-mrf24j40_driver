@@ -1,0 +1,16 @@
+#define MRF_AES0 0x00
+#define MRF_AES1 0x00
+#define MRF_AES2 0x00
+#define MRF_AES3 0x00
+#define MRF_AES4 0x00
+#define MRF_AES5 0x00
+#define MRF_AES6 0x00
+#define MRF_AES7 0x00
+#define MRF_AES8 0x00
+#define MRF_AES9 0x00
+#define MRF_AES10 0x00
+#define MRF_AES11 0x00
+#define MRF_AES12 0x00
+#define MRF_AES13 0x00
+#define MRF_AES14 0x00
+#define MRF_AES15 0x00
