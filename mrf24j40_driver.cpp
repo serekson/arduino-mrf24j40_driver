@@ -18,52 +18,6 @@ MRFDriver::MRFDriver(int pin_cs, int pin_int) {
   resetSS();
 }
 
-void MRFDriver::init(void){
-  write_short(MRF_GPIO, 0x00);
-  write_short(MRF_TRISGPIO, 0x00);
-  write_long(MRF_TESTMODE, 0x0F);
-
-  write_short(MRF_PACON0, 0x29);
-  write_short(MRF_PACON1, 0x02);
-  write_short(MRF_PACON2, 0x98); // Initialize FIFOEN = 1 and TXONTS = 0x6.
-  write_short(MRF_TXSTBL, 0x95); // Initialize RFSTBL = 0x9.
-
-  write_long(MRF_RFCON0, 0x03); // Initialize RFOPT = 0x03.
-  write_long(MRF_RFCON1, 0x02); // Initialize VCOOPT = 0x02.
-  write_long(MRF_RFCON2, 0x80); // Enable PLL (PLLEN = 1).
-  write_long(MRF_RFCON6, 0x90); // Initialize TXFIL = 1 and 20MRECVR = 1.
-  write_long(MRF_RFCON7, 0x80); // Initialize SLPCLKSEL = 0x2 (100 kHz Internal oscillator).
-  write_long(MRF_RFCON8, 0x10); // Initialize RFVCO = 1.
-  write_long(MRF_SLPCON1, 0x21); // Initialize CLKOUTEN = 1 and SLPCLKDIV = 0x01.
-
-  // Configuration for nonbeacon-enabled devices (see Section 3.8 Beacon-Enabled and
-  // Nonbeacon-Enabled Networks)
-  write_short(MRF_TXMCR, 0x1C);  //Clear Slotted mode
-
-  //Security
-  set_AES_key(); //install the tx and rx security key
-  //write_short(MRF_SECCON0,0x12); //enable AES-CCM-128 on the TXFIFO and RXFIFO
-  //write_short(MRF_SECCON0,0x09); //AES-CTR
-  write_short(MRF_SECCON0,0); //NONE
-
-  write_short(MRF_BBREG2, 0x80); // Set CCA mode to ED
-  write_short(MRF_CCAEDTH, 0x60); // Set CCA ED threshold.
-  write_short(MRF_BBREG6, 0x40); // Set appended RSSI value to RXFIFO.
-
-  // Initialize interrupts
-  write_long(MRF_SLPCON0, 0x01); //Interrupt on falling edge and disable sleep clock
-  write_short(MRF_INTCON, 0xE6); //Enable SEC, RX, and TX Interrupts
-
-  set_channel(7);
-  write_long(MRF_RFCON3, 0x40); //Select TX Power
-  write_short(MRF_RFCTL, 0x04); //Reset RF state machine.
-  write_short(MRF_RFCTL, 0x00);
-
-  delay(1); //delay at least 192usec
-
-  set_addr64();
-}
-
 void MRFDriver::setSS(void) {
   PORTB &= ~_BV(_pin_cs);
 }
@@ -110,59 +64,37 @@ void MRFDriver::write_long(word address, byte data) {
   resetSS();
 }
 
-word MRFDriver::read_pan(void) {
-  byte panh = read_short(MRF_PANIDH);
-  return panh << 8 | read_short(MRF_PANIDL);
-}
-
-void MRFDriver::write_pan(word panid) {
-  mrf_panid[0] = panid & 0xff;
-  mrf_panid[1] = panid >> 8;
-
-  write_short(MRF_PANIDL, mrf_panid[0]);
-  write_short(MRF_PANIDH, mrf_panid[1]);
-
-  Serial.print("panid: ");
-  Serial.print(read_short(MRF_PANIDH), HEX);
-  Serial.println(read_short(MRF_PANIDL), HEX);
-}
-
-void MRFDriver::write_addr16(word address16) {
-  write_short(MRF_SADRH, address16 >> 8);
-  write_short(MRF_SADRL, address16 & 0xff);
-
+void MRFDriver::write_addr16(byte* addr16) {
+  write_short(MRF_SADRL, addr16[0]);
+  write_short(MRF_SADRH, addr16[1]);
+  
   Serial.print("addr16: ");
   Serial.print(read_short(MRF_SADRH), HEX);
   Serial.println(read_short(MRF_SADRL), HEX);
 }
 
-word MRFDriver::read_addr16(void) {
-  byte a16h = read_short(MRF_SADRH);
-  return a16h << 8 | read_short(MRF_SADRL);
-}
-
-void MRFDriver::set_addr64(void) {
+void MRFDriver::writeAddress(void) {
   byte temp;
   //load EEPROM into local variable
 
-  mrf_mac[0]  = EEPROM.read(EEPROM_MADR7);
-  mrf_mac[1]  = EEPROM.read(EEPROM_MADR6);
-  mrf_mac[2]  = EEPROM.read(EEPROM_MADR5);
-  mrf_mac[3]  = EEPROM.read(EEPROM_MADR4);
-  mrf_mac[4]  = EEPROM.read(EEPROM_MADR3);
-  mrf_mac[5]  = EEPROM.read(EEPROM_MADR2);
-  mrf_mac[6]  = EEPROM.read(EEPROM_MADR1);
-  mrf_mac[7]  = EEPROM.read(EEPROM_MADR0);
+  local.addr[0]  = EEPROM.read(EEPROM_MADR7);
+  local.addr[1]  = EEPROM.read(EEPROM_MADR6);
+  local.addr[2]  = EEPROM.read(EEPROM_MADR5);
+  local.addr[3]  = EEPROM.read(EEPROM_MADR4);
+  local.addr[4]  = EEPROM.read(EEPROM_MADR3);
+  local.addr[5]  = EEPROM.read(EEPROM_MADR2);
+  local.addr[6]  = EEPROM.read(EEPROM_MADR1);
+  local.addr[7]  = EEPROM.read(EEPROM_MADR0);
 
   //write address to mrf transiever
-  write_short(MRF_EADR0,mrf_mac[0]);
-  write_short(MRF_EADR1,mrf_mac[1]);
-  write_short(MRF_EADR2,mrf_mac[2]);
-  write_short(MRF_EADR3,mrf_mac[3]);
-  write_short(MRF_EADR4,mrf_mac[4]);
-  write_short(MRF_EADR5,mrf_mac[5]);
-  write_short(MRF_EADR6,mrf_mac[6]);
-  write_short(MRF_EADR7,mrf_mac[7]);
+  write_short(MRF_EADR0,local.addr[0]);
+  write_short(MRF_EADR1,local.addr[1]);
+  write_short(MRF_EADR2,local.addr[2]);
+  write_short(MRF_EADR3,local.addr[3]);
+  write_short(MRF_EADR4,local.addr[4]);
+  write_short(MRF_EADR5,local.addr[5]);
+  write_short(MRF_EADR6,local.addr[6]);
+  write_short(MRF_EADR7,local.addr[7]);
 
   //print the address so we know the mrf got it
   Serial.print("addr64: ");
@@ -311,11 +243,11 @@ void MRFDriver::proc_interrupt(void) {
   byte last_interrupt = get_interrupts();
   
   if(last_interrupt & MRF_I_RXIF) {
-    //Serial.println("rxxing...");
+    Serial.println("rxxing...");
     rx_toBuffer();
   }
   if(last_interrupt & MRF_I_TXNIF) {
-    //Serial.println("txxing...");
+    Serial.println("txxing...");
     tx_status();
   }
   if(last_interrupt & MRF_I_SECIF) {
@@ -359,9 +291,9 @@ void MRFDriver::rx_toBuffer(void) {
     //if its not a beacon
     if((packet.frm_ctrl1 & 0b00000111)  != 0b00000000) {
       //Dest PAN ID
-      packet.dest_pan = read_long(ptr++);
-      packet.dest_pan |= (read_long(ptr++) << 8);
-
+      packet.dest_pan[0] = read_long(ptr++);
+      packet.dest_pan[1] = read_long(ptr++);
+	  
       //Destintation Address
 	  switch(packet.frm_ctrl2 & 0b00001100) {
 	    case 0x0:  //dest addr not included
@@ -377,18 +309,18 @@ void MRFDriver::rx_toBuffer(void) {
 	  }
 
     } else {
-	  packet.dest_pan = 0;
-	  memset(packet.dest_addr, 0, 8);
+	  zeroAddress(packet.dest_addr);
+	  zeroPAN(packet.dest_pan);
     }
 
     //Source PAN ID
     switch(packet.frm_ctrl1 & 0b01000000) {
       case 0x00:  //no pan compression
-        packet.src_pan = read_long(ptr++);
-        packet.src_pan |= (read_long(ptr++) << 8);
+        packet.src_pan[0] = read_long(ptr++);
+        packet.src_pan[1] = read_long(ptr++);
         break;
       case 0x40:  //pan compression
-	    packet.src_pan = packet.dest_pan;
+	    setPAN(packet.src_pan,packet.dest_pan);
         break;
     }
 
@@ -405,7 +337,7 @@ void MRFDriver::rx_toBuffer(void) {
         }
         break;
       default:
-        memset(packet.src_addr, 0, 8);
+        zeroAddress(packet.src_addr);
     }
 	  
     //create data array
@@ -423,6 +355,15 @@ void MRFDriver::rx_toBuffer(void) {
     interrupts();
 
 	_rx_count++;
+	
+    Serial.print("RSSI: ");
+    Serial.println(packet.rssi);
+    Serial.print("LQI: ");
+    Serial.println(packet.lqi);
+    Serial.print("CRC1: ");
+    Serial.println(packet.crc1);
+    Serial.print("CRC2: ");
+    Serial.println(packet.crc2);
   }
 }
 
@@ -436,4 +377,89 @@ void MRFDriver::printAddress(DeviceAddress a) {
     Serial.print(a[7-i], HEX);
   }
   Serial.println("");
+}
+
+void MRFDriver::zeroAddress(byte* a) {
+  memset(a, 0, 8);
+}
+
+bool MRFDriver::compareAddress(byte* a, byte* b) {
+  if(memcmp(a, b, 8) == 0) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+void MRFDriver::setAddress(byte* a, byte* b) {
+  memcpy(a, b, 8);
+}
+
+// function to print a device address
+void MRFDriver::printPAN(DeviceAddress a) {
+  uint8_t i;
+
+  for(i=0;i<2;i++) {
+    // zero pad the address if necessary
+    if (a[1-i] < 16) Serial.print("0");
+    Serial.print(a[1-i], HEX);
+  }
+  Serial.println("");
+}
+
+void MRFDriver::zeroPAN(byte* a) {
+  memset(a, 0, 2);
+}
+
+bool MRFDriver::comparePAN(byte* a, byte* b) {
+  if(memcmp(a, b, 2) == 0) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+void MRFDriver::setPAN(byte* a, byte* b) {
+  memcpy(a, b, 2);
+}
+
+void MRFDriver::writePAN(PanID panid) {
+  write_short(MRF_PANIDL, panid[0]);
+  write_short(MRF_PANIDH, panid[1]);
+
+  Serial.print("panid: ");
+  Serial.print(read_short(MRF_PANIDH), HEX);
+  Serial.println(read_short(MRF_PANIDL), HEX);
+}
+
+void MRFDriver::EnergyDetect(void) {
+  byte rssi_stat;
+  uint8_t i;
+  
+  write_long(MRF_TESTMODE, 0x08);	// Disable automatic switch on PA/LNA
+  write_short(MRF_TRISGPIO, 0x0F);	// Set GPIO direction to OUTPUT (control PA/LNA)
+  write_short(MRF_GPIO, 0x0C);		// Enable LNA, disable
+ 
+  for(i=0;i<16;i++) {
+    set_channel(i); //Select channel
+	
+	write_short(MRF_BBREG6, 0x80);	// set RSSIMODE1 to initiate RSSI measurement
+	
+    rssi_stat = read_short(MRF_BBREG6);
+	while((rssi_stat & 0x01) != 0x01) {
+      rssi_stat = read_short(MRF_BBREG6);
+    }
+ 
+    rssi_stat = read_long(MRF_RSSI);
+	
+	Serial.print("Chan: ");
+	Serial.print(i, HEX);
+	Serial.print(" RSSI: ");
+	Serial.println(rssi_stat, HEX);
+  }
+ 
+  write_short(MRF_BBREG6, 0x80);	// enable RSSI on received packets again after energy scan is finished
+  write_short(MRF_GPIO, 0x00);
+  write_short(MRF_TRISGPIO, 0x00);	// Set GPIO direction to INPUT
+  write_long(MRF_TESTMODE, 0x0F);	// setup for automatic PA/LNA control
 }

@@ -149,6 +149,7 @@
 #define MRF_I_TXNIF 0b00000001
 
 typedef byte DeviceAddress[8];
+typedef byte PanID[2];
 
 typedef struct {
   byte frm_len;
@@ -156,9 +157,9 @@ typedef struct {
   byte frm_ctrl2;
   byte seq_num;
 
-  uint16_t dest_pan;
+  PanID dest_pan;
   DeviceAddress dest_addr;
-  uint16_t src_pan;
+  PanID src_pan;
   DeviceAddress src_addr;
 
   byte data_len;
@@ -170,10 +171,21 @@ typedef struct {
   byte rssi;
 } Packet;
 
+typedef struct {
+  DeviceAddress addr;
+  byte addr16[2];
+  PanID pan;
+  
+  uint32_t time;
+  uint8_t status;
+  
+  byte rssi;
+  byte lqi;
+} Node;
+
 class MRFDriver{
   private:
   byte _portb_cs;
-  //int _pin_int;
   int _pin_cs;
   
   uint8_t _macBSN;
@@ -181,12 +193,12 @@ class MRFDriver{
   public:
   MRFDriver(int pin_cs, int pin_int);
   
+  Node local;
+  
   uint8_t _rx_count;
   Packet packet;
   
   uint8_t _seq_num;
-  byte mrf_panid[2];
-  byte mrf_mac[8];
   
   void init(void);
   
@@ -198,11 +210,7 @@ class MRFDriver{
   void write_short(byte address, byte data);
   void write_long(word address, byte data) ;
   
-  word read_pan(void) ;
-  void write_pan(word panid) ;
-  void write_addr16(word address16) ;
-  word read_addr16(void);
-  void set_addr64(void) ;
+  void write_addr16(byte* addr16) ;
   void set_channel(byte channel) ;
   void set_AES_key(void);
   
@@ -221,5 +229,17 @@ class MRFDriver{
   void rx_toBuffer(void);
   
   void printAddress(DeviceAddress a) ;
+  void zeroAddress(byte* a);
+  bool compareAddress(byte* a, byte* b);
+  void setAddress(byte* a, byte* b);
+  void writeAddress(void) ;
+  
+  void printPAN(PanID a) ;
+  void zeroPAN(byte* a);
+  bool comparePAN(byte* a, byte* b);
+  void setPAN(byte* a, byte* b);
+  void writePAN(PanID panid);
+  
+  void EnergyDetect(void);
 };
 #endif
